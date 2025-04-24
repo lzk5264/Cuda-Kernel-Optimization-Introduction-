@@ -68,9 +68,18 @@ void perform_gpu_separable_convolution(float *h_input, float *h_output, float *h
     dim3 grid_transpose((height + block.x - 1) / block.x, (width + block.y - 1) / block.y);
 
     auto start = std::chrono::high_resolution_clock::now();
-    hipLaunchKernelGGL(convolution_gpu_row, grid, block, 0, 0, d_input, d_tmp, width, height, d_kernel);
+    // 执行分离卷积
+    // hipLaunchKernelGGL(convolution_gpu_row, grid, block, 0, 0, d_input, d_tmp, width, height, d_kernel);
+    // hipLaunchKernelGGL(convolution_gpu_col, grid, block, 0, 0, d_tmp, d_output, width, height, d_kernel);
+    // 执行转置版本
+    // hipLaunchKernelGGL(convolution_gpu_row, grid, block, 0, 0, d_input, d_tmp, width, height, d_kernel);
+    // hipLaunchKernelGGL(transposeShared, grid, block, 0, 0, d_tmp, d_input, width, height);
+    // hipLaunchKernelGGL(convolution_gpu_row, grid_transpose, block, 0, 0, d_input, d_tmp, height, width, d_kernel);
+    // hipLaunchKernelGGL(transposeShared, grid_transpose, block, 0, 0, d_tmp, d_output, height, width);
+    // 执行共享内存 + 转置版本
+    hipLaunchKernelGGL(convolution_gpu_row_shared, grid, block, 0, 0, d_input, d_tmp, width, height, d_kernel);
     hipLaunchKernelGGL(transposeShared, grid, block, 0, 0, d_tmp, d_input, width, height);
-    hipLaunchKernelGGL(convolution_gpu_row, grid_transpose, block, 0, 0, d_input, d_tmp, height, width, d_kernel);
+    hipLaunchKernelGGL(convolution_gpu_row_shared, grid_transpose, block, 0, 0, d_input, d_tmp, height, width, d_kernel);
     hipLaunchKernelGGL(transposeShared, grid_transpose, block, 0, 0, d_tmp, d_output, height, width);
     hipDeviceSynchronize();
     auto end = std::chrono::high_resolution_clock::now();
@@ -86,47 +95,11 @@ void perform_gpu_separable_convolution(float *h_input, float *h_output, float *h
     std::cout << "GPU separable convolution output saved." << std::endl;
 }
 
-// 执行GPU分离卷积函数
-void perform_gpu_separable_convolution_shared(float *h_input, float *h_output, float *h_kernel, int width, int height, int channels)
-{
-    size_t img_size = width * height;
-    float *d_input, *d_output, *d_kernel, *d_tmp;
-    hipMalloc((void**)&d_input, img_size * sizeof(float));
-    hipMalloc((void**)&d_output, img_size * sizeof(float));
-    hipMalloc((void**)&d_kernel, K * sizeof(float));
-    hipMalloc((void**)&d_tmp, img_size * sizeof(float));
-
-    hipMemcpy(d_input, h_input, img_size * sizeof(float), hipMemcpyHostToDevice);
-    hipMemcpy(d_kernel, h_kernel, K * sizeof(float), hipMemcpyHostToDevice);
-
-    dim3 block(BLOCK_DIM_X, BLOCK_DIM_Y);
-    dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
-    dim3 grid_transpose((height + block.x - 1) / block.x, (width + block.y - 1) / block.y);
-
-    auto start = std::chrono::high_resolution_clock::now();
-    hipLaunchKernelGGL(convolution_gpu_row_shared, grid, block, 0, 0, d_input, d_tmp, width, height, d_kernel);
-    hipLaunchKernelGGL(transposeShared, grid, block, 0, 0, d_tmp, d_input, width, height);
-    hipLaunchKernelGGL(convolution_gpu_row_shared, grid_transpose, block, 0, 0, d_input, d_tmp, height, width, d_kernel);
-    hipLaunchKernelGGL(transposeShared, grid_transpose, block, 0, 0, d_tmp, d_output, height, width);
-    hipDeviceSynchronize();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> gpu_time = end - start;
-    std::cout << "GPU separable shared convolution time: " << gpu_time.count() << " ms" << std::endl;
-
-    hipMemcpy(h_output, d_output, img_size * sizeof(float), hipMemcpyDeviceToHost);
-    hipFree(d_input);
-    hipFree(d_output);
-    hipFree(d_kernel);
-
-    gray_data2gray_image("./output_image/gpu_output_separate_shared.png", width, height, channels, h_output);
-    std::cout << "GPU separable convolution output saved." << std::endl;
-}
-
 int main()
 {
     // 读取图像
     int width, height, channels;
-    unsigned char *img_data = stbi_load("./input_image/input_2k.jpg", &width, &height, &channels, 0);
+    unsigned char *img_data = stbi_load("./input_image/input_8k.jpg", &width, &height, &channels, 0);
     if (!img_data) {
         std::cerr << "Error loading image: " << stbi_failure_reason() << std::endl;
         return -1;
@@ -149,42 +122,23 @@ int main()
     }
     stbi_image_free(img_data);
 
-    // CPU卷积
-    // float *h_output = new float[img_size];
-    // perform_cpu_convolution(h_input, h_output, width, height, channels, img_size, h_kernel);
+    // 执行CPU卷积
+    float *h_output_cpu = new float[img_size];
+    perform_cpu_convolution(h_input, h_output_cpu, width, height, channels, img_size, h_kernel);
 
-    // 执行GPU卷积
-    float *h_output_gpu = new float[img_size];
-    perform_gpu_basic_convolution(h_input, h_output_gpu, h_kernel, width, height, channels);
+    // 执行GPU基本卷积
+    float *h_output_gpu_basic = new float[img_size];
+    perform_gpu_basic_convolution(h_input, h_output_gpu_basic, h_kernel, width, height, channels);
 
-    float *h_kernel_separable = new float[K];
-    for (int i = 0; i < K; ++i) {
-        h_kernel_separable[i] = 1.0f / K; // 均值卷积核
-    }
-    float *h_output_separable = new float[img_size];
-
-    perform_gpu_separable_convolution(h_input, h_output_separable, h_kernel_separable, width, height, channels);
-
-    if (!compare_image(h_output_gpu, h_output_separable, img_size)) {
-        std::cerr << "GPU basic and separable convolution results do not match!" << std::endl;
-    } else {
-        std::cout << "GPU basic and separable convolution results match." << std::endl;
-    }
-
-
-    // 执行GPU分离卷积函数
-    float *h_output_separable_shared = new float[img_size];
-    perform_gpu_separable_convolution_shared(h_input, h_output_separable_shared, h_kernel_separable, width, height, channels);
-    
-
+    // 执行GPU分离卷积
+    float *h_output_gpu_separable = new float[img_size];
+    perform_gpu_separable_convolution(h_input, h_output_gpu_separable, h_kernel, width, height, channels);
 
     // 释放内存
     delete[] h_input;
-    delete[] h_kernel;
-    // delete[] h_output;
-    delete[] h_kernel_separable;
-    delete[] h_output_separable;
-    delete[] h_output_separable_shared;
+    delete[] h_output_cpu;
+    delete[] h_output_gpu_basic;
+    delete[] h_output_gpu_separable;
     
     return 0;
 }

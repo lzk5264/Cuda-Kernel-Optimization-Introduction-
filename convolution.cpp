@@ -83,6 +83,24 @@ __global__ void convolution_gpu_row(
     output[y * width + x] = sum;
 }
 
+__global__ void convolution_gpu_col(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int width,
+    int height,
+    const float* __restrict__ kernel)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height) return;
+    float sum = 0.0f;
+    for (int k = -R; k <= R; ++k) {
+        int iy = y + k;
+        sum += (iy >= 0 && iy < height) ? input[iy * width + x] * kernel[R + k] : 0.0f;
+    }
+    output[y * width + x] = sum;
+}
 
 __global__ void convolution_gpu_row_shared(
     const float* __restrict__ input,

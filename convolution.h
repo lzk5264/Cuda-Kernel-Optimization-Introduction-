@@ -34,3 +34,11 @@ __global__ void convolution_gpu_row_vec4(
     int width,
     int height,
     const float* __restrict__ kernel);
+
+
+__global__ void convolution_gpu_col(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int width,
+    int height,
+    const float* __restrict__ kernel);
