@@ -1,0 +1,59 @@
+# 编译产物
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+
+# CUDA/HIP 特定文件
+*.i
+*.ii
+*.gpu
+*.ptx
+*.cubin
+*.fatbin
+
+# 输出图像
+/output_image/*.png
+
+# 编译目录
+/build/
+/bin/
+/Debug/
+/Release/
+/x64/
+/x86/
+/obj/
+
+# IDE和编辑器文件
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake 生成文件
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# 依赖管理器生成文件
+/vendor/
+/external/downloaded/
+
+# 日志文件
+*.log
+
+# 临时文件
+tmp/
+temp/
+.cache/
