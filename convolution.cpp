@@ -83,6 +83,7 @@ __global__ void convolution_gpu_row(
     output[y * width + x] = sum;
 }
 
+
 __global__ void convolution_gpu_row_shared(
     const float* __restrict__ input,
     float* __restrict__ output,
